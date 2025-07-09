@@ -1,0 +1,288 @@
+-- 1. Find the average test score for each invigilator, only considering invigilators who have conducted more than one test
+
+SELECT invigilator, AVG(test_score) AS avg_score
+FROM (
+    SELECT t.*,COUNT(*) OVER(PARTITION BY invigilator) AS test_count
+    FROM "Test" t
+) AS subquery
+WHERE test_count > 1
+GROUP BY invigilator;
+
+-- 2. List the number of appointments per branch along with the total number of appointments for each applying category
+
+SELECT a.branch, a.applying_for, COUNT(*) AS num_appointments
+FROM "Appointment" a
+INNER JOIN "Applied_To" at ON a.appointment_no = at.appointment_no
+GROUP BY a.branch, a.applying_for
+ORDER BY a.branch, a.applying_for;
+
+-- 3. Find the average test score for each applying category for appointments that are scheduled on weekdays (Monday to Friday):
+
+SELECT a.applying_for, AVG(t.test_score) AS avg_score
+FROM "Appointment" a
+INNER JOIN "Applied_To" at ON a.appointment_no = at.appointment_no
+INNER JOIN "Test" t ON at.roll_no = t.roll_no
+WHERE EXTRACT(ISODOW FROM a.date) BETWEEN 1 AND 5
+GROUP BY a.applying_for;
+
+-- 4. This query retrieves the count of appointments for each payment mode, ordered by the appointment count in descending order.
+
+SELECT p."payment_mode", COUNT(DISTINCT a."appointment_no") AS "appointment_count"
+FROM "Payment" p
+JOIN "Appointment" a ON p."transaction_id" = a."app_txn_id"
+GROUP BY p."payment_mode"
+ORDER BY "appointment_count" DESC;
+
+-- 5.Retrieve the appointment numbers, dates, and statuses for appointments scheduled at counters where the employee names start with 'A'
+
+SELECT a.appointment_no, a.date, a.status
+FROM "Appointment" a
+INNER JOIN "Counter" c ON a.counter_no = c.counter_no
+WHERE c.employee_name LIKE 'A%';
+
+--6. List the vehicle registration details for vehicles registered by users whose first names contain the letter 'A' and are in cities with a pincode ending in '1'
+
+SELECT vr.*
+FROM "Vehicle_Registration" vr
+INNER JOIN "User" u ON vr.user_id = u.user_id
+INNER JOIN "Pincode" p ON vr.pincode = p.pincode
+WHERE u.first_name LIKE '%A%' AND p.pincode % 10 = 1;
+
+-- 7.Find the average test score for appointments applied to by users who have applied to less than two appointments:
+
+SELECT AVG(t.test_score) AS avg_score
+FROM "Applied_To" at
+INNER JOIN "Test" t ON at.roll_no = t.roll_no
+WHERE at.roll_no IN (
+    SELECT roll_no
+    FROM "Applied_To"
+    GROUP BY roll_no
+    HAVING COUNT(appointment_no) < 2
+);
+
+--8. Show all permits due to expire within the next 3 months, sorted by expiration date:
+
+SELECT permit_no, purpose, validity
+FROM "Permit"
+WHERE validity BETWEEN CURRENT_DATE AND (CURRENT_DATE + INTERVAL '3 months')
+ORDER BY validity;
+
+--9. Show users who applied for learning license and have paid for an appointment but have not taken the test
+
+SELECT U.first_name, U.last_name
+FROM "User" U
+JOIN "Learning_License" ll ON U.user_id = ll.user_id
+JOIN "Payment" P ON ll.app_txn_id = P.transaction_id 
+LEFT JOIN "Test" T ON U.user_id = T.roll_no
+WHERE T.date IS NULL;
+
+--10.Display the next 10 appointments starting from an offset of 5
+
+SELECT *
+FROM "Appointment"
+ORDER BY date, timeslot
+LIMIT 10 OFFSET 5;
+
+--11. This query retrieves the count of total appointments for each RTO location (city and state), ordered by the number of appointments in descending order.
+
+SELECT vr."registration_no", vr."vehicle_type", vr."model", vr."year_of_manufacture", COUNT(vo."owner_name") AS "number_of_owners"
+FROM "Vehicle_Registration" vr
+LEFT JOIN "Vehicle_Owner" vo ON vr."registration_no" = vo."registration_no"
+GROUP BY vr."registration_no", vr."vehicle_type", vr."model", vr."year_of_manufacture"
+HAVING COUNT(vo."owner_name") > 1
+ORDER BY "number_of_owners" DESC;
+
+--12.This query retrieves the roll numbers, test scores, invigilators, feedback, test dates, and counter types for tests where the score is less than 40 and feedback is provided, ordered by the test scores in ascending order.
+
+SELECT t."roll_no", t."test_score", t."invigilator", t."feedback", t."date", c."counter_type"
+FROM "Test" t
+JOIN "Counter" c ON t."computer_no" = c."counter_no"
+WHERE t."test_score" < 40 AND t."feedback" IS NOT NULL
+ORDER BY t."test_score" ASC;
+
+-- 13.This query retrieves the top 5 pincodes and cities with the highest number of learning licenses issued, displaying the pincode, city name, and the count of learning licenses.
+
+SELECT p."pincode", p."city", COUNT(DISTINCT ll."ll_id") AS "learning_licenses_issued"
+FROM "Pincode" p
+JOIN "Learning_License" ll ON p."pincode" = ll."pincode"
+GROUP BY p."pincode", p."city"
+ORDER BY "learning_licenses_issued" DESC
+LIMIT 5;
+
+--14. This query retrieves the count of total tests conducted for each RTO location (city and state), ordered by the number of tests in descending order.
+
+SELECT r."city_code", r."state_code", COUNT(DISTINCT t."roll_no") AS "total_tests"
+FROM "RTO" r
+JOIN "Counter" c ON r."counter_no" = c."counter_no"
+JOIN "Test" t ON c."counter_no" = t."computer_no"
+GROUP BY r."city_code", r."state_code"
+ORDER BY "total_tests" DESC;
+
+-- 15. Retrieve all vehicle types and the count of vehicles registered for each type, limited to the top 5 most common:
+
+SELECT vehicle_type, COUNT(*) as total
+FROM "Vehicle_Registration"
+GROUP BY vehicle_type
+ORDER BY total DESC
+LIMIT 5;
+
+-- 16. Retrieve the last 10 payments made for renewals
+
+SELECT RP.renewal_txn_id
+FROM "Renewal_Payment" RP
+ORDER BY RP.timestamp DESC
+LIMIT 10;
+
+--17. Select the test scores of users along with their average score:
+
+SELECT T.roll_no, T.test_score, A.avg_score
+FROM "Test" T,
+(SELECT roll_no, AVG(test_score) as avg_score FROM "Test" GROUP BY roll_no) A
+WHERE T.roll_no = A.roll_no;
+
+--18. This query retrieves the top 3 counter types with the highest average test scores, displaying the counter type and the average test score rounded to 2 decimal places.
+
+SELECT c."counter_type", ROUND(AVG(t."test_score"), 2) AS "avg_test_score"
+FROM "Counter" c
+JOIN "Test" t ON c."counter_no" = t."computer_no"
+GROUP BY c."counter_type"
+ORDER BY "avg_test_score" DESC
+LIMIT 3;
+
+-- 19. Find all users who have the same first name and last name but different pincodes.
+
+SELECT u1.first_name, u1.last_name
+FROM "User" u1
+JOIN "User" u2 ON u1.first_name = u2.first_name AND u1.last_name = u2.last_name
+WHERE u1.pincode <> u2.pincode
+GROUP BY u1.first_name, u1.last_name
+HAVING COUNT(DISTINCT u1.pincode) > 1;
+
+-- 20. Get all RTO offices in the state Maharashtra with the highest number of employees
+
+SELECT *
+FROM "RTO"
+WHERE state_code = 'MH' 
+ORDER BY number_of_employees DESC;
+
+-- 21. Retrieve the vehicle details for all vehicles that have a permit expiring in the next month.
+
+SELECT vr.*
+FROM "Vehicle_Registration" vr
+JOIN "Permit" p ON vr.user_id = p.user_id
+WHERE p.validity BETWEEN CURRENT_DATE AND (CURRENT_DATE + INTERVAL '1 month');
+
+--22. List all RTOs along with the number of employees and the count of permits issued:
+
+SELECT r.city_code, r.state_code, r.number_of_employees, COUNT(p.permit_no) AS permits_issued
+FROM "RTO" r
+LEFT JOIN "Permit" p ON r.roll_no = p.user_id
+GROUP BY r.city_code, r.state_code, r.number_of_employees;
+
+-- 23. Retrieve the mobile number of a user with renewal id RN0005 who has applied for a renewal:
+
+SELECT um.mobile_no
+FROM "Renewal" r
+JOIN "User_Mobile" um ON r.user_id = um.user_id
+WHERE r.renewal_id = 'RN0005';
+
+-- 24. Get the renewal payment details for the user with id ID00051:
+
+SELECT rp.renewal_txn_id, rp.payment_mode, rp.timestamp
+FROM "Renewal" r
+JOIN "Renewal_Payment" rp ON r.renew_txn_id = rp.renewal_txn_id
+WHERE r.user_id = 'ID00051';
+
+--25. Retrieve all renewals along with their corresponding payments and the associated user's mobile number:
+
+SELECT r.renewal_id, r.dl_no, r.renew_date, um.mobile_no
+FROM "Renewal" r
+JOIN "Renewal_Payment" rp ON r.renew_txn_id = rp.renewal_txn_id
+JOIN "User_Mobile" um ON r.user_id = um.user_id;
+
+--26. Find the RTOs where the number of employees is greater than the average number of employees across all RTOs
+
+SELECT r.city_code, r.state_code, r.number_of_employees
+FROM "RTO" r
+WHERE r.number_of_employees > (
+    SELECT AVG(number_of_employees) FROM "RTO"
+);
+
+--27. Get the users who have applied for a renewal but haven't paid yet:
+
+SELECT u.user_id, u.first_name, u.last_name, r.renewal_id
+FROM "User" u
+JOIN "Renewal" r ON u.user_id = r.user_id
+LEFT JOIN "Renewal_Payment" rp ON r.renew_txn_id = rp.renewal_txn_id
+WHERE rp.renewal_txn_id IS NULL;
+
+--28.  List all applied-to entries along with the corresponding learning license appointment and user details
+
+SELECT at.appointment_no, at.roll_no, at.city_code, at.state_code, a.date, u.first_name, u.last_name, um.mobile_no
+FROM "Applied_To" at
+JOIN "Appointment" a ON at.appointment_no = a.appointment_no
+JOIN "Learning_License" ll ON a.app_txn_id = ll.app_txn_id
+JOIN "User" u ON ll.user_id = u.user_id
+JOIN "User_Mobile" um ON u.user_id = um.user_id;
+
+--29.  List all pincode entries along with the cities having exactly one RTO
+
+SELECT p.pincode, p.city
+FROM "Pincode" p
+JOIN "RTO" r ON p.pincode = r.pincode
+GROUP BY p.pincode, p.city
+HAVING COUNT(r.city_code) = 1;
+
+--30. List the details of all vehicle registrations in the Mumbai city
+
+SELECT vr.*
+FROM "Vehicle_Registration" vr
+JOIN "User" u ON vr.user_id=u.user_id
+JOIN "Pincode" p ON u.pincode=p.pincode
+WHERE p.city='Mumbai';
+
+--31. Find all tests that have a score above a threshold of 50
+
+SELECT *
+FROM "Test"
+WHERE test_score>50;
+
+-- 32. Show all the appointments scheduled for a particular date(2025-04-02)
+
+SELECT * 
+FROM "Appointment"
+WHERE date='2025-04-02';
+
+--33. Count the number of vehicles registered under each type
+
+SELECT vehicle_type, COUNT(*) as vehicle_count
+FROM "Vehicle_Registration"
+GROUP BY vehicle_type;
+
+--34. Fetch all renewal applications that have been made within the last year
+
+SELECT * 
+FROM "Renewal"
+WHERE renew_date> CURRENT_DATE-INTERVAL '1 year' AND renew_date< CURRENT_DATE;
+
+--35. Provide a report showing the performance metrics of each counter in our system, including the total number of appointments processed by each counter and the average test scores of the applicants they have supervised
+
+SELECT 
+    c.counter_no,
+    c.counter_type,
+    c.employee_name,
+    COUNT(DISTINCT a.appointment_no) AS total_appointments,
+    AVG(t.test_score) AS avg_test_score
+FROM 
+    "Counter" c
+LEFT JOIN 
+    "Appointment" a ON c.counter_no = a.counter_no
+LEFT JOIN 
+    "Applied_To" ato ON a.appointment_no = ato.appointment_no
+LEFT JOIN 
+    "Test" t ON ato.roll_no = t.roll_no
+GROUP BY 
+    c.counter_no, c.counter_type, c.employee_name;
+
+
+
